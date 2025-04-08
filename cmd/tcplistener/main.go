@@ -2,10 +2,10 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"log"
 	"net"
-	"strings"
+
+	"github.com/isotronic/httpfromtcp/internal/request"
 )
 
 func main() {
@@ -23,38 +23,17 @@ func main() {
 		}
 
 		log.Println("connection accepted")
-		lines := getLinesChannel(conn)
-		for line := range lines {
-			fmt.Println(line)
+		req, err := request.RequestFromReader(conn)
+		if err != nil {
+			log.Printf("error parsing request: %v", err)
+			continue
 		}
+		fmt.Println("Request line:")
+		fmt.Printf("- Method: %v\n", req.RequestLine.Method)
+		fmt.Printf("- Target: %v\n", req.RequestLine.RequestTarget)
+		fmt.Printf("- Version: %v\n", req.RequestLine.HttpVersion)
+
 		conn.Close()
 		log.Println("connection closed")
 	}
-}
-
-func getLinesChannel(f io.ReadCloser) <-chan string {
-	var currentLine string
-	c := make(chan string)
-	go func() {
-		for {
-			buffer := make([]byte, 8)
-			n, err := f.Read(buffer)
-			if err == io.EOF {
-				if currentLine != "" {
-					c <- currentLine
-				}
-				break
-			}
-
-			str := string(buffer[:n])
-			parts := strings.Split(str, "\n")
-			for i := range parts[:len(parts)-1] {
-				c <- currentLine + parts[i]
-				currentLine = ""
-			}
-			currentLine += parts[len(parts)-1]
-		}
-		close(c)
-	}()
-	return c
 }
