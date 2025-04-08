@@ -68,9 +68,9 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 		// Decrement the readToIndex to show remaining unparsed bytes
 		readToIndex -= parsedBytes
 	}
-	
+
 	// Handle any remaining bytes in the buffer
-	if readToIndex > 0 {
+	if readToIndex > 0 && req.State != done {
 		_, err := req.parse(buf[:readToIndex])
 		if err != nil {
 			return &req, err
