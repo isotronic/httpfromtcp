@@ -17,7 +17,7 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 	}
 
 	if strings.Index(str, CRLF) == 0 {
-		return 0, true, nil
+		return 2, true, nil
 	}
 
 	firstHeader := strings.Split(str, CRLF)[0]
