@@ -11,16 +11,18 @@ import (
 )
 
 type Request struct {
-	RequestLine RequestLine
-	Headers     headers.Headers
-	Body        []byte
-	State       RequestState
+	RequestLine 		RequestLine
+	Headers     		headers.Headers
+	Body        		[]byte
+
+	bodyReadLength 	int
+	state       		RequestState
 }
 
 type RequestLine struct {
-	HttpVersion   string
-	RequestTarget string
-	Method        string
+	HttpVersion   	string
+	RequestTarget 	string
+	Method        	string
 }
 
 type RequestState int
@@ -38,12 +40,12 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 	buf := make([]byte, bufferSize)
 	readToIndex := 0
 	req := Request{
-		State:   initialized,
+		state:   initialized,
 		Headers: headers.Headers{},
 	}
 
 	for {
-		if req.State == done {
+		if req.state == done {
 			break
 		}
 
@@ -66,7 +68,7 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 					readToIndex -= parsedBytes
 			} 
 			// If the parser now indicates done, break out.
-			if req.State == done {
+			if req.state == done {
 					break
 			}
 		}
@@ -95,7 +97,7 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 	}
 
 	// Handle any remaining bytes in the buffer
-	if readToIndex > 0 && req.State != done {
+	if readToIndex > 0 && req.state != done {
 		_, err := req.parse(buf[:readToIndex])
 		if err != nil {
 			return &req, err
@@ -151,9 +153,9 @@ func parseRequestLine(b []byte) (*RequestLine, int, error) {
 // parse parses the request line and headers and sets the state to done
 func (r *Request) parse(data []byte) (int, error) {
 	totalBytesRead := 0
-	for r.State != done {
+	for r.state != done {
 		numBytesPerRead := 0
-		switch r.State {
+		switch r.state {
 		case initialized:
 			reqLine, numBytesPerRead, err := parseRequestLine(data[totalBytesRead:])
 			if err != nil {
@@ -165,7 +167,7 @@ func (r *Request) parse(data []byte) (int, error) {
 			}
 	
 			r.RequestLine = *reqLine
-			r.State = parsingHeaders
+			r.state = parsingHeaders
 			totalBytesRead += numBytesPerRead
 		case parsingHeaders:
 			numBytesPerRead, finished, err := r.Headers.Parse(data[totalBytesRead:])
@@ -174,33 +176,40 @@ func (r *Request) parse(data []byte) (int, error) {
 			}
 	
 			if finished {
-				r.State = parsingBody
+        // If no Content-Length header is present, then there is no body.
+        if _, ok := r.Headers["content-length"]; !ok {
+            r.state = done
+        } else {
+            r.state = parsingBody
+        }
 			}
 	
 			totalBytesRead += numBytesPerRead
 		case parsingBody:
 			length, ok := r.Headers["content-length"]
 			if !ok {
-				r.State = done
-				break
+				r.state = done
+				return len(data), nil
 			}
 			contentLength, err := strconv.Atoi(length)
 			if err != nil {
 				return 0, err
 			}
 			if contentLength == 0 {
-				r.State = done
-				break
+				r.state = done
+				return len(data), nil
 			}
-			r.Body = append(r.Body, data[totalBytesRead:]...)
-			totalBytesRead += len(data[totalBytesRead:])
+			r.Body = append(r.Body, data...)
+			r.bodyReadLength += len(data)
 
-			if contentLength < len(r.Body) {
+			if contentLength < r.bodyReadLength {
 				return 0, fmt.Errorf("error: content length is less than body length")
 			}
-			if contentLength == len(r.Body) {
-				r.State = done
+			if contentLength == r.bodyReadLength {
+				r.state = done
 			}
+
+			return len(data), nil
 		case done:
 			return 0, fmt.Errorf("error: trying to read data in a done state")
 		default:
