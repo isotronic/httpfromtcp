@@ -5,13 +5,15 @@ import (
 	"io"
 	"strings"
 	"unicode"
+
+	"github.com/isotronic/httpfromtcp/internal/headers"
 )
 
 type Request struct {
 	RequestLine RequestLine
-	Headers     map[string]string
+	Headers     headers.Headers
 	Body        []byte
-	State       int
+	State       RequestState
 }
 
 type RequestLine struct {
@@ -20,8 +22,11 @@ type RequestLine struct {
 	Method        string
 }
 
+type RequestState int
+
 const (
-	initialized = iota
+	initialized RequestState = iota
+	parsingHeaders
 	done
 )
 
@@ -31,7 +36,8 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 	buf := make([]byte, bufferSize)
 	readToIndex := 0
 	req := Request{
-		State: initialized,
+		State:   initialized,
+		Headers: headers.Headers{},
 	}
 
 	for {
@@ -112,24 +118,45 @@ func parseRequestLine(b []byte) (*RequestLine, int, error) {
 	return reqLine, len(lines[0]) + 2, nil
 }
 
-// parse parses the request line and sets the state to done
+// parse parses the request line and headers and sets the state to done
 func (r *Request) parse(data []byte) (int, error) {
-	if r.State == initialized {
-		reqLine, numBytesPerRead, err := parseRequestLine(data)
-		if err != nil {
-			return 0, err
+	totalBytesRead := 0
+	for r.State != done {
+		numBytesPerRead := 0
+		switch r.State {
+		case initialized:
+			reqLine, numBytesPerRead, err := parseRequestLine(data[totalBytesRead:])
+			if err != nil {
+				return 0, err
+			}
+	
+			if numBytesPerRead == 0 {
+				return 0, nil
+			}
+	
+			r.RequestLine = *reqLine
+			r.State = parsingHeaders
+			totalBytesRead += numBytesPerRead
+		case parsingHeaders:
+			numBytesPerRead, finished, err := r.Headers.Parse(data[totalBytesRead:])
+			if err != nil {
+				return 0, err
+			}
+	
+			if finished {
+				r.State = done
+			}
+	
+			totalBytesRead += numBytesPerRead
+		case done:
+			return 0, fmt.Errorf("error: trying to read data in a done state")
+		default:
+			return 0, fmt.Errorf("error: unknown state")
 		}
 
 		if numBytesPerRead == 0 {
-			return 0, nil
+			break
 		}
-
-		r.RequestLine = *reqLine
-		r.State = done
-		return numBytesPerRead, nil
-	} else if r.State == done {
-		return 0, fmt.Errorf("error: trying to read data in a done state")
-	} else {
-		return 0, fmt.Errorf("error: unknown state")
 	}
+	return totalBytesRead, nil
 }
