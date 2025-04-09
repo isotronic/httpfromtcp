@@ -3,6 +3,7 @@ package request
 import (
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 	"unicode"
 
@@ -27,6 +28,7 @@ type RequestState int
 const (
 	initialized RequestState = iota
 	parsingHeaders
+	parsingBody
 	done
 )
 
@@ -100,6 +102,17 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 		}
 	}
 
+	length, ok := req.Headers["content-length"]
+	if ok {
+		contentLength, err := strconv.Atoi(length)
+		if err != nil {
+			return &req, err
+		}
+		if contentLength != len(req.Body) {
+			return &req, fmt.Errorf("error: content length does not match body length")
+		}
+	}
+
 	return &req, nil
 }
 
@@ -161,10 +174,33 @@ func (r *Request) parse(data []byte) (int, error) {
 			}
 	
 			if finished {
-				r.State = done
+				r.State = parsingBody
 			}
 	
 			totalBytesRead += numBytesPerRead
+		case parsingBody:
+			length, ok := r.Headers["content-length"]
+			if !ok {
+				r.State = done
+				break
+			}
+			contentLength, err := strconv.Atoi(length)
+			if err != nil {
+				return 0, err
+			}
+			if contentLength == 0 {
+				r.State = done
+				break
+			}
+			r.Body = append(r.Body, data[totalBytesRead:]...)
+			totalBytesRead += len(data[totalBytesRead:])
+
+			if contentLength < len(r.Body) {
+				return 0, fmt.Errorf("error: content length is less than body length")
+			}
+			if contentLength == len(r.Body) {
+				r.State = done
+			}
 		case done:
 			return 0, fmt.Errorf("error: trying to read data in a done state")
 		default:

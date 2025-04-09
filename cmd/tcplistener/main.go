@@ -39,6 +39,9 @@ func main() {
 			fmt.Printf("- %v: %v\n", header, req.Headers[header])
 		}
 
+		fmt.Println("Body:")
+		fmt.Printf("%v\n", string(req.Body))
+
 		conn.Close()
 		log.Println("connection closed")
 	}
