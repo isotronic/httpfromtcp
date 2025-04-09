@@ -1,26 +1,38 @@
 package server
 
 import (
+	"bytes"
+	"io"
 	"log"
 	"net"
 	"strconv"
 	"sync/atomic"
 
+	"github.com/isotronic/httpfromtcp/internal/request"
 	"github.com/isotronic/httpfromtcp/internal/response"
 )
 
 type Server struct {
-	listener net.Listener
-	isClosed atomic.Bool
+	handler		Handler
+	listener 	net.Listener
+	isClosed 	atomic.Bool
 }
 
-func Serve(port int) (*Server, error) {
+type HandlerError struct {
+	StatusCode response.StatusCode
+	Message    string
+}
+
+type Handler func(w io.Writer, req *request.Request) *HandlerError
+
+func Serve(port int, handler Handler) (*Server, error) {
 	p := strconv.Itoa(port)
 	l, err := net.Listen("tcp", ":" + p)
 	if err != nil {
 		return nil, err
 	}
 	server := Server{
+		handler: handler,
 		listener: l,
 	}
 
@@ -58,16 +70,52 @@ func (s *Server) listen() {
 }
 
 func (s *Server) handle(conn net.Conn) {
-	err := response.WriteStatusLine(conn, response.StatusOK)
+	defer conn.Close()
+	req, err := request.RequestFromReader(conn)
 	if err != nil {
-		log.Println("Error writing status line:", err)
+		log.Println("Error parsing request:", err)
 		return
 	}
-	headers := response.GetDefaultHeaders(0)
-	err = response.WriteHeaders(conn, headers)
-	if err != nil {
-		log.Println("Error writing headers:", err)
-		return
+
+	buf := bytes.Buffer{}
+	handlerError := s.handler(&buf, req)
+	if handlerError != nil {
+		err = response.WriteStatusLine(conn, handlerError.StatusCode)
+		if err != nil {
+			log.Println("Error writing status line:", err)
+			return
+		}
+
+		headers := response.GetDefaultHeaders(len(handlerError.Message))
+		err = response.WriteHeaders(conn, headers)
+		if err != nil {
+			log.Println("Error writing headers:", err)
+			return
+		}
+
+		_, err = conn.Write([]byte(handlerError.Message))
+		if err != nil {
+			log.Println("Error writing response:", err)
+			return
+		}
+	} else {
+		err = response.WriteStatusLine(conn, response.StatusOK)
+		if err != nil {
+			log.Println("Error writing status line:", err)
+			return
+		}
+
+		headers := response.GetDefaultHeaders(len(buf.String()))
+		err = response.WriteHeaders(conn, headers)
+		if err != nil {
+			log.Println("Error writing headers:", err)
+			return
+		}
+
+		_, err = conn.Write(buf.Bytes())
+		if err != nil {
+				log.Println("Error writing body:", err)
+				return
+		}
 	}
-	conn.Close()
 }
