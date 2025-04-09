@@ -42,7 +42,7 @@ func TestHeadersParse(t *testing.T) {
 	assert.Equal(t, "curl/7.81.0", headers["user-agent"])
 	assert.Equal(t, "*/*", headers["accept"])
 	assert.Equal(t, "application/json", headers["content-type"])
-	assert.Equal(t, 61, totalBytes)
+	assert.Equal(t, 63, totalBytes)
 
 	// Test: Valid multiple different values with the same key
 	headers = Headers{}
@@ -56,7 +56,7 @@ func TestHeadersParse(t *testing.T) {
 	}
 	require.NotNil(t, headers)
 	assert.Equal(t, "localhost:42069, localhost:42070", headers["host"])
-	assert.Equal(t, 46, totalBytes)
+	assert.Equal(t, 48, totalBytes)
 	assert.True(t, done)
 
 	// Test: Valid done
@@ -65,7 +65,7 @@ func TestHeadersParse(t *testing.T) {
 	n, done, err = headers.Parse(data)
 	require.NoError(t, err)
 	require.NotNil(t, headers)
-	assert.Equal(t, 0, n)
+	assert.Equal(t, 2, n)
 	assert.True(t, done)
 
 	// Test: Invalid spacing in header
