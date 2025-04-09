@@ -28,10 +28,16 @@ func main() {
 			log.Printf("error parsing request: %v", err)
 			continue
 		}
+
 		fmt.Println("Request line:")
 		fmt.Printf("- Method: %v\n", req.RequestLine.Method)
 		fmt.Printf("- Target: %v\n", req.RequestLine.RequestTarget)
 		fmt.Printf("- Version: %v\n", req.RequestLine.HttpVersion)
+
+		fmt.Println("Headers:")
+		for header := range req.Headers {
+			fmt.Printf("- %v: %v\n", header, req.Headers[header])
+		}
 
 		conn.Close()
 		log.Println("connection closed")
