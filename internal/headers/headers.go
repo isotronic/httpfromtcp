@@ -37,7 +37,12 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 	}
 
 	lowerCaseKey := strings.ToLower(keyValid)
-	h[lowerCaseKey] = strings.TrimSpace(pair[1])
+	_, ok := h[lowerCaseKey]
+	if ok {
+		h[lowerCaseKey] += ", " + strings.TrimSpace(pair[1])
+	} else {
+		h[lowerCaseKey] = strings.TrimSpace(pair[1])
+	}
 
 	return len(firstHeader) + 2, false, nil
 }
