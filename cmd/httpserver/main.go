@@ -1,7 +1,6 @@
 package main
 
 import (
-	"io"
 	"log"
 	"os"
 	"os/signal"
@@ -28,21 +27,61 @@ func main() {
 	log.Println("Server gracefully stopped")
 }
 
-func handleRequest(w io.Writer, req *request.Request) *server.HandlerError {
-	handlerError := server.HandlerError{}
-
+func handleRequest(w *response.Writer, req *request.Request) {
 	if req.RequestLine.RequestTarget == "/yourproblem" {
-		handlerError.StatusCode = response.StatusBadRequest
-		handlerError.Message = "Your problem is not my problem\n"
-		return &handlerError
-	}
-	
-	if req.RequestLine.RequestTarget == "/myproblem" {
-		handlerError.StatusCode = response.StatusInternalServerError
-		handlerError.Message = "Woopsie, my bad\n"
-		return &handlerError
+		body := `
+			<html>
+				<head>
+					<title>400 Bad Request</title>
+				</head>
+				<body>
+					<h1>Bad Request</h1>
+					<p>Your request honestly kinda sucked.</p>
+				</body>
+			</html>
+		`
+		headers := response.GetDefaultHeaders(len(body))
+		headers.Add("Content-Type", "text/html")
+		w.WriteStatusLine(response.StatusBadRequest)
+		w.WriteHeaders(headers)
+		w.WriteBody([]byte(body))
+		return
 	}
 
-	w.Write([]byte("All good, frfr\n"))
-	return nil
+	if req.RequestLine.RequestTarget == "/myproblem" {
+		body := `
+			<html>
+				<head>
+					<title>500 Internal Server Error</title>
+				</head>
+				<body>
+					<h1>Internal Server Error</h1>
+					<p>Okay, you know what? This one is on me.</p>
+				</body>
+			</html>
+		`
+		headers := response.GetDefaultHeaders(len(body))
+		headers.Add("Content-Type", "text/html")
+		w.WriteStatusLine(response.StatusInternalServerError)
+		w.WriteHeaders(headers)
+		w.WriteBody([]byte(body))
+		return
+	}
+
+	body := `
+		<html>
+			<head>
+				<title>200 OK</title>
+			</head>
+			<body>
+				<h1>Success!</h1>
+				<p>Your request was an absolute banger.</p>
+			</body>
+		</html>
+	`
+	headers := response.GetDefaultHeaders(len(body))
+	headers.Add("Content-Type", "text/html")
+	w.WriteStatusLine(response.StatusOK)
+	w.WriteHeaders(headers)
+	w.WriteBody([]byte(body))
 }

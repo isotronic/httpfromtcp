@@ -1,8 +1,6 @@
 package server
 
 import (
-	"bytes"
-	"io"
 	"log"
 	"net"
 	"strconv"
@@ -23,7 +21,7 @@ type HandlerError struct {
 	Message    string
 }
 
-type Handler func(w io.Writer, req *request.Request) *HandlerError
+type Handler func(w *response.Writer, req *request.Request)
 
 func Serve(port int, handler Handler) (*Server, error) {
 	p := strconv.Itoa(port)
@@ -77,45 +75,8 @@ func (s *Server) handle(conn net.Conn) {
 		return
 	}
 
-	buf := bytes.Buffer{}
-	handlerError := s.handler(&buf, req)
-	if handlerError != nil {
-		err = response.WriteStatusLine(conn, handlerError.StatusCode)
-		if err != nil {
-			log.Println("Error writing status line:", err)
-			return
-		}
+	// Create a new response.Writer
+	responseWriter := response.NewWriter(conn)
 
-		headers := response.GetDefaultHeaders(len(handlerError.Message))
-		err = response.WriteHeaders(conn, headers)
-		if err != nil {
-			log.Println("Error writing headers:", err)
-			return
-		}
-
-		_, err = conn.Write([]byte(handlerError.Message))
-		if err != nil {
-			log.Println("Error writing response:", err)
-			return
-		}
-	} else {
-		err = response.WriteStatusLine(conn, response.StatusOK)
-		if err != nil {
-			log.Println("Error writing status line:", err)
-			return
-		}
-
-		headers := response.GetDefaultHeaders(len(buf.String()))
-		err = response.WriteHeaders(conn, headers)
-		if err != nil {
-			log.Println("Error writing headers:", err)
-			return
-		}
-
-		_, err = conn.Write(buf.Bytes())
-		if err != nil {
-				log.Println("Error writing body:", err)
-				return
-		}
-	}
+	s.handler(responseWriter, req)
 }

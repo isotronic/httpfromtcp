@@ -10,6 +10,15 @@ type Headers map[string]string
 const CRLF = "\r\n"
 const VALIDCHAR = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!#$%&'*+-.^_`|~"
 
+func NewHeaders() Headers {
+	return Headers{}
+}
+
+func (h Headers) Add(key, value string) {
+	key = strings.ToLower(key)
+	h[key] = value
+}
+
 func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 	str := string(data)
 	if !strings.Contains(str, CRLF) {
