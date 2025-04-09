@@ -44,6 +44,21 @@ func TestHeadersParse(t *testing.T) {
 	assert.Equal(t, "application/json", headers["content-type"])
 	assert.Equal(t, 61, totalBytes)
 
+	// Test: Valid multiple different values with the same key
+	headers = Headers{}
+	done = false
+	data = []byte("Host: localhost:42069\r\nHost: localhost:42070\r\n\r\n")
+	totalBytes = 0
+	for !done {
+		n, done, err = headers.Parse(data[totalBytes:])
+		require.NoError(t, err)
+		totalBytes += n
+	}
+	require.NotNil(t, headers)
+	assert.Equal(t, "localhost:42069, localhost:42070", headers["host"])
+	assert.Equal(t, 46, totalBytes)
+	assert.True(t, done)
+
 	// Test: Valid done
 	headers = Headers{}
 	data = []byte("\r\n")
