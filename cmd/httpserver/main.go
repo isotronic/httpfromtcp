@@ -1,14 +1,18 @@
 package main
 
 import (
+	"crypto/sha256"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 
+	"github.com/isotronic/httpfromtcp/internal/headers"
 	"github.com/isotronic/httpfromtcp/internal/request"
 	"github.com/isotronic/httpfromtcp/internal/response"
 	"github.com/isotronic/httpfromtcp/internal/server"
@@ -33,28 +37,30 @@ func main() {
 func handleRequest(w *response.Writer, req *request.Request) {
 	if strings.HasPrefix(req.RequestLine.RequestTarget, "/httpbin/") {
 		url := "https://httpbin.org/" + strings.TrimPrefix(req.RequestLine.RequestTarget, "/httpbin/")
-		
 
 		res, err := http.Get(url)
 		if err != nil {
-			headers := response.GetDefaultHeaders(len(err.Error()))
+			h := response.GetDefaultHeaders(len(err.Error()))
 			w.WriteStatusLine(response.StatusInternalServerError)
-			w.WriteHeaders(headers)
+			w.WriteHeaders(h)
 			w.WriteBody([]byte(err.Error()))
 			return
 		}
 		defer res.Body.Close()
 
-		headers := response.GetDefaultHeaders(0)
-		headers.Remove("Content-Length")
-		headers.Add("Transfer-Encoding", "chunked")
+		h := response.GetDefaultHeaders(0)
+		h.Remove("Content-Length")
+		h.Add("Transfer-Encoding", "chunked")
+		h.Add("Trailer", "X-Content-SHA256, X-Content-Length")
 		w.WriteStatusLine(response.StatusOK)
-		w.WriteHeaders(headers)
+		w.WriteHeaders(h)
 
+		rawBody := make([]byte, 0)
 		buf := make([]byte, 1024)
 		for {
 			n, err := res.Body.Read(buf)
 			if n > 0 {
+				rawBody = append(rawBody, buf[:n]...)
 				w.WriteChunkedBody(buf[:n])
 			}
 
@@ -66,7 +72,13 @@ func handleRequest(w *response.Writer, req *request.Request) {
 				break
 			}
 		}
+		t := headers.NewHeaders()
+		sum := sha256.Sum256(rawBody)
+		length := strconv.Itoa(len(rawBody))
+		t.Add("X-Content-SHA256", fmt.Sprintf("%x", sum))
+		t.Add("X-Content-Length", length)
 		w.WriteChunkedBodyDone()
+		w.WriteTrailers(t)
 		return
 	}
 
@@ -82,10 +94,10 @@ func handleRequest(w *response.Writer, req *request.Request) {
 				</body>
 			</html>
 		`
-		headers := response.GetDefaultHeaders(len(body))
-		headers.Add("Content-Type", "text/html")
+		h := response.GetDefaultHeaders(len(body))
+		h.Override("Content-Type", "text/html")
 		w.WriteStatusLine(response.StatusBadRequest)
-		w.WriteHeaders(headers)
+		w.WriteHeaders(h)
 		w.WriteBody([]byte(body))
 		return
 	}
@@ -102,10 +114,10 @@ func handleRequest(w *response.Writer, req *request.Request) {
 				</body>
 			</html>
 		`
-		headers := response.GetDefaultHeaders(len(body))
-		headers.Add("Content-Type", "text/html")
+		h := response.GetDefaultHeaders(len(body))
+		h.Override("Content-Type", "text/html")
 		w.WriteStatusLine(response.StatusInternalServerError)
-		w.WriteHeaders(headers)
+		w.WriteHeaders(h)
 		w.WriteBody([]byte(body))
 		return
 	}
@@ -121,9 +133,9 @@ func handleRequest(w *response.Writer, req *request.Request) {
 			</body>
 		</html>
 	`
-	headers := response.GetDefaultHeaders(len(body))
-	headers.Add("Content-Type", "text/html")
+	h := response.GetDefaultHeaders(len(body))
+	h.Override("Content-Type", "text/html")
 	w.WriteStatusLine(response.StatusOK)
-	w.WriteHeaders(headers)
+	w.WriteHeaders(h)
 	w.WriteBody([]byte(body))
 }

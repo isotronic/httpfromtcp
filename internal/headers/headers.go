@@ -16,6 +16,15 @@ func NewHeaders() Headers {
 
 func (h Headers) Add(key, value string) {
 	key = strings.ToLower(key)
+	if existingValue, ok := h[key]; ok {
+		h[key] = existingValue + ", " + value
+	} else {
+		h[key] = value
+	}
+}
+
+func (h Headers) Override(key, value string) {
+	key = strings.ToLower(key)
 	h[key] = value
 }
 

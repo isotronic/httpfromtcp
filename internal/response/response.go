@@ -20,6 +20,7 @@ const (
 	writingStatusLine writerState = iota
 	writingHeaders
 	writingBody
+	writingTrailers
 )
 
 type StatusCode int
@@ -96,10 +97,29 @@ func (w *Writer) WriteHeaders(headers headers.Headers) error {
 	return nil
 }
 
+func (w *Writer) WriteTrailers(h headers.Headers) error {
+	if w.state != writingTrailers {
+		return fmt.Errorf("error: cannot write trailers before writing body")
+	}
+	responseTrailers := ""
+	for header := range h {
+		responseTrailers += header + ": " + h[header] + "\r\n"
+	}
+	_, err := w.writer.Write([]byte(responseTrailers + "\r\n"))
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (w *Writer) WriteBody(p []byte) (int, error) {
 	if w.state != writingBody {
 		return 0, fmt.Errorf("error: cannot write body before writing headers")
 	}
+	defer func() {
+		w.state = writingTrailers
+	}()
 
 	return w.writer.Write(p)
 }
@@ -120,7 +140,11 @@ func (w *Writer) WriteChunkedBody(p []byte) (int, error) {
 }
 
 func (w *Writer) WriteChunkedBodyDone() (int, error) {
-	n, err := w.writer.Write([]byte("0\r\n\r\n"))
+	defer func() {
+		w.state = writingTrailers
+	}()
+
+	n, err := w.writer.Write([]byte("0\r\n"))
 
 	if f, ok := w.writer.(http.Flusher); ok {
 		f.Flush()
