@@ -82,6 +82,19 @@ func handleRequest(w *response.Writer, req *request.Request) {
 		return
 	}
 
+	if req.RequestLine.RequestTarget == "/video" {
+		f, err := os.ReadFile("assets/vim.mp4")
+		if err != nil {
+			log.Println(err)
+		}
+		h := response.GetDefaultHeaders(len(f))
+		h.Override("Content-Type", "video/mp4")
+		w.WriteStatusLine(response.StatusOK)
+		w.WriteHeaders(h)
+		w.WriteBody(f)
+		return
+	}
+
 	if req.RequestLine.RequestTarget == "/yourproblem" {
 		body := `
 			<html>
