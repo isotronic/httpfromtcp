@@ -3,6 +3,7 @@ package response
 import (
 	"fmt"
 	"io"
+	"net/http"
 	"strconv"
 
 	"github.com/isotronic/httpfromtcp/internal/headers"
@@ -101,4 +102,29 @@ func (w *Writer) WriteBody(p []byte) (int, error) {
 	}
 
 	return w.writer.Write(p)
+}
+
+func (w *Writer) WriteChunkedBody(p []byte) (int, error) {
+	if w.state != writingBody {
+		return 0, fmt.Errorf("error: cannot write chunked body before writing headers")
+	}
+	hex := fmt.Sprintf("%x", len(p))
+	str := hex + "\r\n" + string(p) + "\r\n"
+	n, err := w.writer.Write([]byte(str))
+
+	if f, ok := w.writer.(http.Flusher); ok {
+		f.Flush()
+	}
+
+	return n, err
+}
+
+func (w *Writer) WriteChunkedBodyDone() (int, error) {
+	n, err := w.writer.Write([]byte("0\r\n\r\n"))
+
+	if f, ok := w.writer.(http.Flusher); ok {
+		f.Flush()
+	}
+
+	return n, err
 }

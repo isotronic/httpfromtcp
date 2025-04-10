@@ -1,9 +1,12 @@
 package main
 
 import (
+	"io"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/isotronic/httpfromtcp/internal/request"
@@ -28,6 +31,45 @@ func main() {
 }
 
 func handleRequest(w *response.Writer, req *request.Request) {
+	if strings.HasPrefix(req.RequestLine.RequestTarget, "/httpbin/") {
+		url := "https://httpbin.org/" + strings.TrimPrefix(req.RequestLine.RequestTarget, "/httpbin/")
+		
+
+		res, err := http.Get(url)
+		if err != nil {
+			headers := response.GetDefaultHeaders(len(err.Error()))
+			w.WriteStatusLine(response.StatusInternalServerError)
+			w.WriteHeaders(headers)
+			w.WriteBody([]byte(err.Error()))
+			return
+		}
+		defer res.Body.Close()
+
+		headers := response.GetDefaultHeaders(0)
+		headers.Remove("Content-Length")
+		headers.Add("Transfer-Encoding", "chunked")
+		w.WriteStatusLine(response.StatusOK)
+		w.WriteHeaders(headers)
+
+		buf := make([]byte, 1024)
+		for {
+			n, err := res.Body.Read(buf)
+			if n > 0 {
+				w.WriteChunkedBody(buf[:n])
+			}
+
+			if err != nil {
+				if err == io.EOF {
+					break
+				}
+				log.Println(err)
+				break
+			}
+		}
+		w.WriteChunkedBodyDone()
+		return
+	}
+
 	if req.RequestLine.RequestTarget == "/yourproblem" {
 		body := `
 			<html>
