@@ -56,44 +56,30 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 			buf = newBuffer
 		}
 
-		// Process any buffered data before doing a read.
-		if readToIndex > 0 {
-			parsedBytes, err := req.parse(buf[:readToIndex])
-			if err != nil {
-					return &req, err
-			}
-			if parsedBytes > 0 {
-					// Shift remaining data left.
-					copy(buf, buf[parsedBytes:readToIndex])
-					readToIndex -= parsedBytes
-			} 
-			// If the parser now indicates done, break out.
-			if req.state == done {
-					break
-			}
-		}
-
-		// Read from the reader into the buffer
-		n, err := reader.Read(buf[readToIndex:])
-		if err == io.EOF {
-			break
-		} else if err != nil {
-			return &req, err
-		}
-		// Increment the readToIndex to show how many bytes have been read
-		readToIndex += n
-
-		// Parse the buffer
+		// Always attempt to parse what we already have
 		parsedBytes, err := req.parse(buf[:readToIndex])
 		if err != nil {
 			return &req, err
 		}
+		if parsedBytes > 0 {
+			// Shift remaining data left.
+			copy(buf, buf[parsedBytes:readToIndex])
+			readToIndex -= parsedBytes
 
-		// Shift the buffer to the left
-		copy(buf, buf[parsedBytes:readToIndex])
-
-		// Decrement the readToIndex to show remaining unparsed bytes
-		readToIndex -= parsedBytes
+			// If parsing completed the request then break.
+			if req.state == done {
+				break
+			}
+		} else {
+			// No progress was made by parsing – try to read more data.
+			n, err := reader.Read(buf[readToIndex:])
+			if err == io.EOF {
+				break
+			} else if err != nil {
+				return &req, err
+			}
+			readToIndex += n
+		}
 	}
 
 	// Handle any remaining bytes in the buffer
@@ -128,7 +114,7 @@ func parseRequestLine(b []byte) (*RequestLine, int, error) {
 	}
 	parts := strings.Split(lines[0], " ")
 	if len(parts) != 3 {
-		return reqLine, 0, fmt.Errorf("invalid number of parts in request line: %s", lines)
+		return reqLine, 0, fmt.Errorf("invalid number of parts in request line: %s", lines[0])
 	}
 
 	for _, char := range parts[0] {
@@ -178,9 +164,9 @@ func (r *Request) parse(data []byte) (int, error) {
 			if finished {
         // If no Content-Length header is present, then there is no body.
         if _, ok := r.Headers["content-length"]; !ok {
-            r.state = done
+          r.state = done
         } else {
-            r.state = parsingBody
+          r.state = parsingBody
         }
 			}
 	
